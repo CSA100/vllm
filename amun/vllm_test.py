@@ -55,20 +55,7 @@ class BatchTester:
         self.prompt_template_file = prompt_template_file
         self.out_dir = out_dir
 
-        # initialize prompt queues
-        self.standard_flow_prompts = []
-        self.key_token_phase_prompts = []
-        self.expansion_phase_prompts = []
-
-        # parse prompt templates
-        prompt_templates = self.read_prompt_templates(prompt_template_file)
-
-        # augment standard flow and key token prompts
-        with open(prompt_file, "r") as f:
-            for line in f:
-                json_line = json.loads(line)
-                self.standard_flow_prompts.append(self.embed_prompts(prompt_templates['standard'], [json_line["question"]]))
-                self.key_token_phase_prompts.append(self.embed_prompts(prompt_templates['key_token'], [json_line["question"]]))
+        self.prompt_templates = self.read_prompt_templates(prompt_template_file)
 
         self.display_config()
 
@@ -126,10 +113,55 @@ class BatchTester:
         sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=100, max_tokens=1000)
         llm = LLM(model=model_path, gpu_memory_utilization=self.gpu_memory_utilization, disable_log_stats=False) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
         outputs = llm.generate(prompts, sampling_params)
+        return outputs
 
     def run(self):
-        self.generate(self.small_model_path, self.standard_flow_prompts)
-     
+        # initialize prompt queues
+        standard_flow_prompts = []
+        key_token_phase_prompts = []
+        expansion_phase_prompts = []
+
+        # augment standard flow and key token prompts
+        with open(self.prompt_file, "r") as f:
+            for line in f:
+                json_line = json.loads(line)
+                standard_flow_prompts.append(self.embed_prompts(self.prompt_templates['standard'], [json_line["question"]]))
+                key_token_phase_prompts.append(self.embed_prompts(self.prompt_templates['key_token'], [json_line["question"]]))
+
+        # small model
+        outputs = self.generate(self.small_model_path, standard_flow_prompts)
+        with open(f"{self.out_dir}_SM_standard.jsonl", 'w') as jsonl_file:
+            for output in outputs:
+                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+        # large model
+        outputs = self.generate(self.large_model_path, standard_flow_prompts)
+        with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
+            for output in outputs:
+                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+        # key tokens
+        outputs = self.generate(self.large_model_path, key_token_phase_prompts)
+        with open(f"{self.out_dir}_LM_key_token.jsonl", 'w') as jsonl_file:
+            for output in outputs:
+                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+        # expansion
+        with open(self.prompt_file, "r") as f:
+            i = 0
+            for line in f:
+                json_line = json.loads(line)
+                expansion_phase_prompts.append(self.embed_prompts(prompt_templates['expansion'], [json_line["question"], outputs[i]['response']]))
+                i += 1
+        print(expansion_phase_prompts[0])
+        outputs = self.generate(self.small_model_path, expansion_phase_prompts)
+        with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
+            for output in outputs:
+                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+
+
+        
 
 if __name__ == "__main__":
     # Set up argument parser
@@ -169,7 +201,7 @@ if __name__ == "__main__":
 
 """
     Example command
-    python3 vllm_test.py --lmp="lmsys/vicuna-13b-v1.5" --smp="lmsys/vicuna-7b-v1.5" --mepp=20 --pf="./data/input/vicuna_g_cf.jsonl" --ptf="./data/prompt_templates.jsonl" --gpu_mem="0.9" --qkv="False" --out_dir="./data/output"
+    python3 vllm_test.py --lmp="lmsys/vicuna-13b-v1.5" --smp="lmsys/vicuna-7b-v1.5" --mepp=20 --pf="./data/input/vicuna_g_cf.jsonl" --ptf="./data/prompt_templates.jsonl" --gpu_mem="0.9" --qkv="False" --out_dir="./data/output/"
 
     /home/chaanan/.cache/huggingface/hub/models--Chaanan--vicuna-7b-v1.5-W8A8-Dynamic-Per-Token/snapshots/d607e7f6393d17f42e546fa2827484d69de6dd29
     Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token 
