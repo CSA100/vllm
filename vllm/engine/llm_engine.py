@@ -56,7 +56,7 @@ from vllm.utils import Counter, Device
 from vllm.version import __version__ as VLLM_VERSION
 
 logger = init_logger(__name__)
-_LOCAL_LOGGING_INTERVAL_SEC = 5
+_LOCAL_LOGGING_INTERVAL_SEC = 0.1
 
 
 def _load_generation_config_dict(model_config: ModelConfig) -> Dict[str, Any]:
@@ -121,6 +121,18 @@ class SchedulerContext:
                        is_last_step=is_last_step,
                        skip=[]))
 
+@dataclass
+class EngineMetrics:
+    now: float
+    num_running: int
+    num_waiting: int
+    num_swapped: int
+    gpu_cache_usage: float
+    cpu_cache_usage: float
+    num_prompt_tokens: int
+    num_generation_tokens: int
+    num_output_tokens: int
+    num_total_tokens: int
 
 class LLMEngine:
     """An LLM engine that receives requests and generates texts.
@@ -228,6 +240,7 @@ class LLMEngine:
         # To improve performance, only final requests outputs may be required.
         # If this set to true, then no intermediate outputs will be returned.
         step_return_finished_only: bool = False,
+        metrics_record: bool = True,
     ) -> None:
         logger.info(
             "Initializing an LLM engine (v%s) with config: "
@@ -294,6 +307,7 @@ class LLMEngine:
         self.prompt_adapter_config = prompt_adapter_config
         self.observability_config = observability_config or ObservabilityConfig(
         )
+        self.metrics_record = metrics_record
         self.log_stats = log_stats
         self.step_return_finished_only = step_return_finished_only
 
@@ -435,6 +449,10 @@ class LLMEngine:
                 }
                 self.stat_loggers["prometheus"].info("cache_config",
                                                      self.cache_config)
+
+        if self.metrics_record:
+            self.metrics: List[EngineMetrics] = []
+            self.total_tokens: int = 0
 
         self.tracer = None
         if self.observability_config.otlp_traces_endpoint:
@@ -1612,6 +1630,14 @@ class LLMEngine:
             # No outputs in this case
             outputs = []
 
+        request_outputs = ctx.request_outputs
+
+        if self.metrics_record:
+            stats = self._get_stats(scheduler_outputs)
+            finished_tokens = sum(len(output.prompt_token_ids) + sum(len(output_tokens.token_ids)
+                                  for output_tokens in output.outputs) for output in request_outputs if output.finished)
+            self.metrics.append(self._stats_to_metrics(stats, finished_tokens))
+
         # Finish the current step for all the sequence groups.
         if self.scheduler_config.is_multi_step:
             for seq_group in seq_group_metadata_list:
@@ -1664,6 +1690,32 @@ class LLMEngine:
             self.model_executor.stop_remote_worker_execution_loop()
 
         return ctx.request_outputs
+
+    def _stats_to_metrics(self, stats: Stats, finished_tokens: int = 0) -> EngineMetrics:
+        self.total_tokens += stats.num_prompt_tokens_iter + stats.num_generation_tokens_iter - finished_tokens
+        return EngineMetrics(
+            now=time.time(),
+            num_running=stats.num_running_sys,
+            num_swapped=stats.num_swapped_sys,
+            num_waiting=stats.num_waiting_sys,
+            gpu_cache_usage=stats.gpu_cache_usage_sys,
+            cpu_cache_usage=stats.cpu_cache_usage_sys,
+            num_prompt_tokens=stats.num_prompt_tokens_iter,
+            num_generation_tokens=stats.num_generation_tokens_iter,
+            num_output_tokens=finished_tokens,
+            num_total_tokens=self.total_tokens,
+        )
+
+    def get_latest_metrics(self) -> EngineMetrics:
+        """Get the latest metrics."""
+        if not self.metrics or len(self.metrics) == 0:
+            stats = self._get_stats(scheduler_outputs=None)
+            return self._stats_to_metrics(stats)
+        return self.metrics[-1]
+
+    def get_metrics_history(self) -> List[EngineMetrics]:
+        """Get the metrics history."""
+        return self.metrics
 
     def _has_remaining_steps(
         self, seq_group_metadata_list: Optional[List[SequenceGroupMetadata]]
@@ -1781,6 +1833,7 @@ class LLMEngine:
                 scheduler.block_manager.get_num_free_gpu_blocks()
                 for scheduler in self.scheduler)
             gpu_cache_usage_sys = 1.0 - (num_free_gpu / num_total_gpu)
+            # gpu_cache_usage_sys = num_total_gpu - num_free_gpu
 
         num_total_cpu = self.cache_config.num_cpu_blocks
         cpu_cache_usage_sys = 0.
