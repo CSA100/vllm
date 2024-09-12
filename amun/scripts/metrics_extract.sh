@@ -1,0 +1,1 @@
+cat metrics.txt | sed -nE 's/Avg prompt throughput: ([0-9.]+) tokens\/s, Avg generation throughput: ([0-9.]+) tokens\/s, Running: ([0-9]+) reqs, Swapped: ([0-9]+) reqs, Pending: ([0-9]+) reqs, GPU KV cache usage: ([0-9.]+)%, CPU KV cache usage: ([0-9.]+)%/\1,\2,\3,\4,\5,\6,\7/p' > output.csv
