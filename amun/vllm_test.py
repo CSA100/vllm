@@ -110,8 +110,8 @@ class BatchTester:
         print("<<<<<< Batch Test Configuration <<<<<<\n")
 
     def generate(self, model_path, prompts):
-        sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=100, max_tokens=1000)
-        llm = LLM(model=model_path, gpu_memory_utilization=self.gpu_memory_utilization, disable_log_stats=False) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
+        sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=5, max_tokens=1000)
+        llm = LLM(model=model_path, gpu_memory_utilization=self.gpu_memory_utilization, disable_log_stats=False, enable_prefix_caching=True) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
         outputs = llm.generate(prompts, sampling_params)
         return outputs
 
@@ -135,10 +135,10 @@ class BatchTester:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
         # large model
-        # outputs = self.generate(self.large_model_path, standard_flow_prompts)
-        # with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
-        #     for output in outputs:
-        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+        outputs = self.generate(self.large_model_path, standard_flow_prompts)
+        with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
+            for output in outputs:
+                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
         # key tokens
         # outputs = self.generate(self.large_model_path, key_token_phase_prompts)
@@ -146,14 +146,14 @@ class BatchTester:
         #     for output in outputs:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
-        with open("./data/expansion_prompts.jsonl", "r") as f:
-            for line in f:
-                json_line = json.loads(line)
-                expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
-        outputs = self.generate(self.small_model_path, expansion_phase_prompts)
-        with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
-            for output in outputs:
-                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+        # with open("./expansion_prompts.jsonl", "r") as f:
+        #     for line in f:
+        #         json_line = json.loads(line)
+        #         expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
+        # outputs = self.generate(self.small_model_path, expansion_phase_prompts)
+        # with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
+        #     for output in outputs:
+        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
 
 
@@ -206,40 +206,40 @@ if __name__ == "__main__":
 """
 
 
-def main_function():
-    def add_system_prompt(prompt):
-        return prompt
-        return f"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: {prompt} ASSISTANT:"
+# def main_function():
+#     def add_system_prompt(prompt):
+#         return prompt
+#         return f"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: {prompt} ASSISTANT:"
 
-    # read prompts from dataset
-    prompts = []
-    question_file = "./data/input/vicuna.jsonl" #args.question_file
-    with open(question_file, "r") as f:
-        for line in f:
-            json_line = json.loads(line)
-            if json_line["category"] not in ("counterfactual", "generic"):
-                continue
-            prompts.append(add_system_prompt(json_line["question"]))
+#     # read prompts from dataset
+#     prompts = []
+#     question_file = "./data/input/vicuna.jsonl" #args.question_file
+#     with open(question_file, "r") as f:
+#         for line in f:
+#             json_line = json.loads(line)
+#             if json_line["category"] not in ("counterfactual", "generic"):
+#                 continue
+#             prompts.append(add_system_prompt(json_line["question"]))
     
-    # set model parameters
-    sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=100, max_tokens=1000)
+#     # set model parameters
+#     sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=100, max_tokens=1000)
 
-    # select model
-    llm = LLM(model="lmsys/vicuna-13b-v1.5", gpu_memory_utilization=0.9, disable_log_stats=False) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5    
-    # generate
-    outputs = llm.generate(prompts, sampling_params)
+#     # select model
+#     llm = LLM(model="lmsys/vicuna-13b-v1.5", gpu_memory_utilization=0.9, disable_log_stats=False, enable_prefix_caching=True) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5    
+#     # generate
+#     outputs = llm.generate(prompts, sampling_params)
 
-    num_input_tokens = 0
-    num_output_tokens = 0
+#     num_input_tokens = 0
+#     num_output_tokens = 0
 
-    # print outputs
-    for output in outputs:
-        prompt = output.prompt
-        generated_text = output.outputs[0].text
-        print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
-        num_input_tokens += len(prompt)
-        num_output_tokens += len(generated_text)
+#     # print outputs
+#     for output in outputs:
+#         prompt = output.prompt
+#         generated_text = output.outputs[0].text
+#         print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
+#         num_input_tokens += len(prompt)
+#         num_output_tokens += len(generated_text)
     
-    print("Num input words: ", num_input_tokens)
-    print("Num output words: ", num_output_tokens)
+#     print("Num input words: ", num_input_tokens)
+#     print("Num output words: ", num_output_tokens)
 
