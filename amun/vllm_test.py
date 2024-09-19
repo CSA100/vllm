@@ -110,7 +110,7 @@ class BatchTester:
         print("<<<<<< Batch Test Configuration <<<<<<\n")
 
     def generate(self, model_path, prompts):
-        sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=5, max_tokens=1000)
+        sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=5, max_tokens=1000) # max_tokens=1000
         llm = LLM(model=model_path, gpu_memory_utilization=self.gpu_memory_utilization, disable_log_stats=False, enable_prefix_caching=True) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
         outputs = llm.generate(prompts, sampling_params)
         return outputs
@@ -135,25 +135,31 @@ class BatchTester:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
         # large model
-        outputs = self.generate(self.large_model_path, standard_flow_prompts)
-        with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
-            for output in outputs:
-                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+        # outputs = self.generate(self.large_model_path, standard_flow_prompts)
+        # with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
+        #     for output in outputs:
+        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
-        # key tokens
+        # lm key tokens
         # outputs = self.generate(self.large_model_path, key_token_phase_prompts)
         # with open(f"{self.out_dir}_LM_key_token.jsonl", 'w') as jsonl_file:
         #     for output in outputs:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
-        # with open("./expansion_prompts.jsonl", "r") as f:
-        #     for line in f:
-        #         json_line = json.loads(line)
-        #         expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
-        # outputs = self.generate(self.small_model_path, expansion_phase_prompts)
-        # with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
+        # sm key tokens
+        # outputs = self.generate(self.small_model_path, key_token_phase_prompts)
+        # with open(f"{self.out_dir}_SM_key_token.jsonl", 'w') as jsonl_file:
         #     for output in outputs:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+        with open("./data/output/vicuna-20-q/control/expansion_prompts.jsonl", "r") as f:
+            for line in f:
+                json_line = json.loads(line)
+                expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
+        outputs = self.generate(self.small_model_path, expansion_phase_prompts)
+        with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
+            for output in outputs:
+                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
 
 
