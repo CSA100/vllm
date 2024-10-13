@@ -193,3 +193,5 @@ hip_compat.h
 
 # Benchmark dataset
 benchmarks/*.json
+
+model_pipeline/
