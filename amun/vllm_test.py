@@ -125,8 +125,8 @@ class BatchTester:
         with open(self.prompt_file, "r") as f:
             for line in f:
                 json_line = json.loads(line)
-                standard_flow_prompts.append(self.embed_prompts(self.prompt_templates['standard'], [json_line["question"]]))
-                key_token_phase_prompts.append(self.embed_prompts(self.prompt_templates['key_token'], [json_line["question"]]))
+                standard_flow_prompts.append(self.embed_prompts(self.prompt_templates['standard'], [json_line["prompt"]]))
+                key_token_phase_prompts.append(self.embed_prompts(self.prompt_templates['key_token'], [json_line["prompt"]]))
 
         # small model
         # outputs = self.generate(self.small_model_path, standard_flow_prompts)
@@ -135,10 +135,10 @@ class BatchTester:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
         # large model
-        # outputs = self.generate(self.large_model_path, standard_flow_prompts)
-        # with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
-        #     for output in outputs:
-        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+        outputs = self.generate(self.large_model_path, standard_flow_prompts)
+        with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
+            for output in outputs:
+                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
         # lm key tokens
         # outputs = self.generate(self.large_model_path, key_token_phase_prompts)
@@ -152,14 +152,14 @@ class BatchTester:
         #     for output in outputs:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
-        with open("./data/output/wizard/control/expansion_prompts.jsonl", "r") as f:
-            for line in f:
-                json_line = json.loads(line)
-                expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
-        outputs = self.generate(self.small_model_path, expansion_phase_prompts)
-        with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
-            for output in outputs:
-                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+        # with open("./router_test/e2e_peformance/Amun_class1_expansion/expansion_prompts.jsonl", "r") as f:
+        #     for line in f:
+        #         json_line = json.loads(line)
+        #         expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
+        # outputs = self.generate(self.small_model_path, expansion_phase_prompts)
+        # with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
+        #     for output in outputs:
+        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
 
 
@@ -225,7 +225,7 @@ if __name__ == "__main__":
 #             json_line = json.loads(line)
 #             if json_line["category"] not in ("counterfactual", "generic"):
 #                 continue
-#             prompts.append(add_system_prompt(json_line["question"]))
+#             prompts.append(add_system_prompt(json_line["prompt"]))
     
 #     # set model parameters
 #     sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=100, max_tokens=1000)

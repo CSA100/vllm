@@ -1,3 +1,11 @@
+from vllm import LLM, SamplingParams
+sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=5, max_tokens=1000) # max_tokens=1000
+llm = LLM(model="/huggingface/models--Chaanan--vicuna-7b-v1.5-W8A8-Dynamic-Per-Token/snapshots/d607e7f6393d17f42e546fa2827484d69de6dd29", gpu_memory_utilization=0.9, disable_log_stats=False, enable_prefix_caching=True) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
+outputs = llm.generate(['plan holiday to spain'], sampling_params)
+print(outputs)
+
+exit()
+
 import torch
 from transformers import RobertaTokenizer, RobertaForSequenceClassification
 
@@ -25,6 +33,9 @@ inputs = {key: val.to(device) for key, val in inputs.items()}
 # Run inference without computing gradients
 with torch.no_grad():
     outputs = model(**inputs)
+# right.append(outputs.to('cpu'))
+# del outputs
+# torch.cuda.empty_cache()
 
 # Get the logits and predicted class
 logits = outputs.logits

@@ -1,0 +1,42 @@
+{"dataset":"vicuna", "idx": "0", "prompt": "Compose an engaging travel blog post about a recent trip to Hawaii, highlighting cultural experiences and must-see attractions."}
+{"dataset":"vicuna", "idx": "1", "prompt": "Can you help me write a formal email to a potential business partner proposing a joint venture?"}
+{"dataset":"vicuna", "idx": "2", "prompt": "Can you help me write a resignation letter to my current employer, while leaving on good terms and expressing gratitude for the opportunities provided?"}
+{"dataset":"vicuna", "idx": "3", "prompt": "Use an appropriate format to structure a formal letter of recommendation for a student applying to a prestigious graduate program in computer science."}
+{"dataset":"vicuna", "idx": "4", "prompt": "Write a compelling product launch announcement email to inform our customers of our new software solution."}
+{"dataset":"vicuna", "idx": "5", "prompt": "Draft an apology email to a customer who experienced a delay in their order, and provide reassurance that the issue has been resolved."}
+{"dataset":"vicuna", "idx": "6", "prompt": "Write a script for a YouTube video exploring the history and cultural significance of jazz."}
+{"dataset":"vicuna", "idx": "7", "prompt": "Write a captivating movie review for a recently released science fiction film, discussing its plot, characters, and special effects."}
+{"dataset":"vicuna", "idx": "8", "prompt": "Structure a podcast script for an episode discussing the influence of streaming platforms on the music industry."}
+{"dataset":"vicuna", "idx": "9", "prompt": "Write a symphony concert review, discussing the orchestra's performance and overall audience experience."}
+{"dataset":"vicuna", "idx": "12", "prompt": "If you were a Shakespearean character, how would you declare your love for someone in a soliloquy?"}
+{"dataset":"vicuna", "idx": "14", "prompt": "Imagine you are a time traveler from the year 3000. What technological advancements would you tell people about?"}
+{"dataset":"vicuna", "idx": "15", "prompt": "As a sports commentator, describe the winning play in the final seconds of a championship game."}
+{"dataset":"vicuna", "idx": "16", "prompt": "Pretend to be a world-famous chef. How would you describe your signature dish to a panel of judges?"}
+{"dataset":"vicuna", "idx": "17", "prompt": "You are a mountain climber reaching the summit of Mount Everest. Describe your emotions and the view from the top."}
+{"dataset":"vicuna", "idx": "18", "prompt": "As a space colonist on Mars, describe your daily life and the challenges you face living on another planet."}
+{"dataset":"vicuna", "idx": "19", "prompt": "Pretend to be a character in a post-apocalyptic world. Describe how you survive and the allies you encounter."}
+{"dataset":"vicuna", "idx": "25", "prompt": "How can you assess the credibility of a source of information, such as a news article or blog post, without relying solely on the reputation of the author or publisher?"}
+{"dataset":"vicuna", "idx": "30", "prompt": "How many times does the average human blink in a lifetime? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "31", "prompt": "How many atoms are in a grain of salt? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "32", "prompt": "How many lightning strikes occur on Earth each day? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "33", "prompt": "How many balloons would it take to lift a house like in the movie 'Up'? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "34", "prompt": "How many text messages are sent globally in a minute? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "35", "prompt": "How many words are spoken daily on Earth? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "36", "prompt": "How many snowflakes fall during a typical winter? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "37", "prompt": "How many pages are in all the books ever written? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "38", "prompt": "How many times has the Earth orbited the Sun since the beginning of life? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "39", "prompt": "How many songs have been recorded throughout history? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step."}
+{"dataset":"vicuna", "idx": "45", "prompt": "What if Alan Turing had not cracked the Enigma code during World War II?"}
+{"dataset":"vicuna", "idx": "50", "prompt": "Develop a C++ program that reads a text file line by line and counts the number of occurrences of a specific word in the file."}
+{"dataset":"vicuna", "idx": "51", "prompt": "Implement a Python function to find the longest common subsequence of two input strings using dynamic programming."}
+{"dataset":"vicuna", "idx": "52", "prompt": "Implement a regular expression in Python to validate an email address."}
+{"dataset":"vicuna", "idx": "53", "prompt": "Write a program to find the nth Fibonacci number using dynamic programming."}
+{"dataset":"vicuna", "idx": "54", "prompt": "Implement a binary search algorithm to find a specific element in a sorted array."}
+{"dataset":"vicuna", "idx": "55", "prompt": "Implement a queue data structure using two stacks in Python."}
+{"dataset":"vicuna", "idx": "56", "prompt": "Implement a program to find the common elements in two arrays without using any extra data structures."}
+{"dataset":"vicuna", "idx": "57", "prompt": "Given that f(x) = 5x^3 - 2x + 3, find the value of f(2)."}
+{"dataset":"vicuna", "idx": "58", "prompt": "Solve for x in the equation 3x + 10 = 5(x - 2)."}
+{"dataset":"vicuna", "idx": "59", "prompt": "If the endpoints of a line segment are (2, -2) and (10, 4), what is the length of the segment?"}
+{"dataset":"vicuna", "idx": "74", "prompt": "Describe a scenario where artificial intelligence could be used to improve the quality and efficiency of healthcare delivery."}
+{"dataset":"vicuna", "idx": "75", "prompt": "Explain the process of gene editing using CRISPR-Cas9 technology, and discuss its potential applications and ethical implications."}
+{"dataset":"vicuna", "idx": "79", "prompt": "Explain the process of natural selection and how it contributes to the evolution and adaptation of species."}
