@@ -9,6 +9,7 @@ from collections import defaultdict
 import subprocess
 import re
 import gc
+from openai import OpenAI
 
 # from enum import enum
 
@@ -72,7 +73,9 @@ class BatchTester:
                     prompt_templates['key_token'] = json_line['template']
                 elif json_line['template_name'] == 'expansion':
                     prompt_templates['expansion'] = json_line['template']
-        if len(prompt_templates) != 3:
+                elif json_line['template_name'] == 'expansion_parallel':
+                    prompt_templates['expansion_parallel'] = json_line['template']
+        if len(prompt_templates) != 4:
             raise Exception("Could not parse prompt templates")
         return prompt_templates
 
@@ -112,7 +115,7 @@ class BatchTester:
         print("<<<<<< Batch Test Configuration <<<<<<\n")
 
     def generate(self, model_path, prompts):
-        sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=5, max_tokens=1000) # max_tokens=1000
+        sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=1, max_tokens=1000) # max_tokens=1000
         llm = LLM(model=model_path, gpu_memory_utilization=self.gpu_memory_utilization, disable_log_stats=False, enable_prefix_caching=True) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
         outputs = llm.generate(prompts, sampling_params)
         del llm
@@ -162,6 +165,49 @@ class BatchTester:
         bullets = [part.strip() for part in parts if part.strip()]
         return bullets
 
+    def get_accuracy_results(self, question, answer_a, answer_b):
+        client = OpenAI()
+
+        system_prompt = "Please act as an impartial judge and evaluate the quality of the responses provided by two AI assistants to the user question displayed below. You should choose the assistant that follows the user's instructions and answers the user's question better. Your evaluation should consider factors such as the helpfulness, relevance, accuracy, depth, creativity, and level of detail of their responses. Begin your evaluation by comparing the two responses and provide a short explanation. Avoid any position biases and ensure that the order in which the responses were presented does not influence your decision. Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants. Be as objective as possible. After providing your explanation, output your final verdict by strictly following this format: \"[[A]]\" if assistant A is better, \"[[B]]\" if assistant B is better, and \"[[C]]\" for a tie."
+        
+        prompt = f"[User Question]\n{question}\n\n[The Start of Assistant A's Answer]\n{answer_a}\n[The End of Assistant A's Answer]\n\n[The Start of Assistant B's Answer]\n{answer_b}\n[The End of Assistant B's Answer]"
+        completion = client.chat.completions.create(
+            model=  "gpt-4o", # "gpt-3.5-turbo-0125", #
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        res = completion.choices[0].message.content
+        score_1 = res.split("[[")[1].split("]]")[0]
+
+        prompt = f"[User Question]\n{question}\n\n[The Start of Assistant A's Answer]\n{answer_b}\n[The End of Assistant A's Answer]\n\n[The Start of Assistant B's Answer]\n{answer_a}\n[The End of Assistant B's Answer]"
+        completion = client.chat.completions.create(
+            model=  "gpt-4o", # "gpt-3.5-turbo-0125", #
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        res = completion.choices[0].message.content
+        score_2 = res.split("[[")[1].split("]]")[0]
+
+        score1 = 0
+        if score_1 == "A":
+            score1 = 1
+        elif score_1 == "B":
+            score1 = -1
+
+        score2 = 0
+        if score_2 == "B":
+            score2 = 1
+        elif score_2 == "A":
+            score2 = -1
+
+        combined_score = score1 + score2
+        final_score = 1 if combined_score > 0 else -1 if combined_score < 0 else 0
+        return final_score
+
     def run(self):
         # initialize prompt queues
         standard_flow_prompts = []
@@ -176,7 +222,6 @@ class BatchTester:
                 request_number = json_line["idx"]
                 standard_flow_prompt = self.embed_prompts(self.prompt_templates['standard'], [json_line["prompt"]])
                 key_token_prompt = self.embed_prompts(self.prompt_templates['key_token'], [json_line["prompt"]])
-
 
                 #### SM BASELINE
                 # clear out log file
@@ -278,6 +323,7 @@ class BatchTester:
                     "num_bullets": len(bullets)
                 }
 
+
                 #### LM-SM expansion
                 # clear out log file
                 with open('./metrics_output.log', 'w') as file:
@@ -314,21 +360,196 @@ class BatchTester:
                     "num_parallel": 1
                 }
 
+                #### LM-SM expansion parallel
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # create expansion prompt
+                expansion_prompts = []
+                for bullet in bullets:
+                    expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_sm_key_token["output"], bullet]))
+
+                # get input and output lengths
+                outputs = self.generate(self.small_model_path, expansion_prompts)
+                num_input_tokens = 0
+                num_output_tokens = 0
+                response = ""
+                for output in outputs:
+                    num_input_tokens += len(output.prompt_token_ids)
+                    num_output_tokens += len(output.outputs[0].token_ids)
+                    response += output.outputs[0].text + "\n\n"
+
+                # # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+
+                lm_sm_expansion_parallel = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "request": json_line["prompt"],
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "input": '\n\n'.join(expansion_prompts),
+                    "output": response,
+                    "num_parallel": len(expansion_prompts)
+                }
+
+
+                #### SM-SM Key Token
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # get input and output lengths
+                output = self.generate(self.small_model_path, [key_token_prompt])[0]
+                num_input_tokens = len(output.prompt_token_ids)
+                num_output_tokens = len(output.outputs[0].token_ids)
+
+                # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+                bullets = self.extract_numbered_bullets(output.outputs[0].text)
+
+                sm_sm_key_token = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "request": json_line["prompt"],
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "input": key_token_prompt,
+                    "output": output.outputs[0].text,
+                    "num_bullets": len(bullets)
+                }
+
+                #### SM-SM expansion
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # create expansion prompt
+                expansion_prompt = self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], lm_sm_key_token["output"]])
+
+                # get input and output lengths
+                output = self.generate(self.small_model_path, [expansion_prompt])[0]
+                num_input_tokens = len(output.prompt_token_ids)
+                num_output_tokens = len(output.outputs[0].token_ids)
+
+                # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+
+                sm_sm_expansion = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "request": json_line["prompt"],
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "input": expansion_prompt,
+                    "output": output.outputs[0].text,
+                    "num_parallel": 1
+                }
+
+                #### SM-SM expansion parallel
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # create expansion prompt
+                expansion_prompts = []
+                for bullet in bullets:
+                    expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_sm_key_token["output"], bullet]))
+
+                # get input and output lengths
+                outputs = self.generate(self.small_model_path, expansion_prompts)
+                num_input_tokens = 0
+                num_output_tokens = 0
+                response = ""
+                for output in outputs:
+                    num_input_tokens += len(output.prompt_token_ids)
+                    num_output_tokens += len(output.outputs[0].token_ids)
+                    response += output.outputs[0].text + "\n\n"
+
+                # # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+
+                sm_sm_expansion_parallel = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "request": json_line["prompt"],
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "input": '\n\n'.join(expansion_prompts),
+                    "output": response,
+                    "num_parallel": len(expansion_prompts)
+                }
+
+                
+
                 print("sm_baseline", sm_baseline)
                 print("\n")
                 print("lm_baseline", lm_baseline)
                 print("\n")
                 print("lm_sm_key_token", lm_sm_key_token)
                 print("\n")
-                print("lm_sm_key_token", lm_sm_expansion)
+                print("lm_sm_expansion", lm_sm_expansion)
+                print("\n")
+                print("lm_sm_expansion_parallel", lm_sm_expansion_parallel)
+                print("\n")
+                print("sm_sm_key_token", sm_sm_key_token)
+                print("\n")
+                print("sm_sm_expansion", sm_sm_expansion)
+                print("\n")
+                print("sm_sm_expansion_parallel", sm_sm_expansion_parallel)
 
 
-
+                # Add in accuracy results
+                accuracy_results = {
+                    "lm_sm_VS_lm_single": get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], lm_baseline["output"]),
+                    "lm_sm_VS_sm_single": get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], sm_baseline["output"]),
+                    "sm_sm_VS_lm_single": get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], lm_baseline["output"]),
+                    "sm_sm_VS_sm_single": get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], sm_baseline["output"]),
+                    "lm_sm_VS_lm_parallel": get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], lm_baseline["output"]),
+                    "lm_sm_VS_sm_parallel": get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], sm_baseline["output"]),
+                    "sm_sm_VS_lm_parallel": get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], lm_baseline["output"]),
+                    "sm_sm_VS_sm_parallel": get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], sm_baseline["output"]),
+                    "lm_VS_sm": get_accuracy_results(json_line["prompt"], lm_baseline["output"], sm_baseline["output"])
+                }
 
                 break
-
-
-        request_number += 1
 
 
         # small model
