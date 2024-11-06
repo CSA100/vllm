@@ -7,6 +7,8 @@ import sys
 import argparse
 from collections import defaultdict
 import subprocess
+import re
+import gc
 
 # from enum import enum
 
@@ -113,7 +115,52 @@ class BatchTester:
         sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=5, max_tokens=1000) # max_tokens=1000
         llm = LLM(model=model_path, gpu_memory_utilization=self.gpu_memory_utilization, disable_log_stats=False, enable_prefix_caching=True) #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
         outputs = llm.generate(prompts, sampling_params)
+        del llm
+        gc.collect()
         return outputs
+
+
+    def get_gpu_metrics(self, total_memory, vllm_memory_utilization, model_weight_size):
+        # get gpu cache usage
+        pattern = re.compile(
+            r"Avg prompt throughput: [0-9.]+ tokens/s, "
+            r"Avg generation throughput: [0-9.]+ tokens/s, "
+            r"Running: [0-9]+ reqs, "
+            r"Swapped: [0-9]+ reqs, "
+            r"Pending: [0-9]+ reqs, "
+            r"GPU KV cache usage: ([0-9.]+)%, "
+            r"CPU KV cache usage: [0-9.]+%"
+        )
+        gpu_cache_usage = []
+        with open('./metrics_output.log', 'r') as file:
+            for line in file:
+                match = pattern.search(line)
+                if match:
+                    gpu_cache_usage.append(float(match.group(1)))
+        total_memory *= vllm_memory_utilization
+        total_cache_memory = total_memory - model_weight_size
+
+        # compute metrics
+        gpu_cache_usage = [x / 100.0 for x in gpu_cache_usage]
+        peak_memory_kvc = max(gpu_cache_usage) * total_cache_memory
+        peak_memory_total = peak_memory_kvc + model_weight_size
+        total_time = len(gpu_cache_usage) * 0.1
+        memory_time_integral_kvc = sum([x * total_cache_memory * 0.1 for x in gpu_cache_usage])
+        memory_time_integral_total = sum([(x * total_cache_memory + model_weight_size) * 0.1 for x in gpu_cache_usage])
+
+        return {
+            "peak_memory_kvc": peak_memory_kvc,
+            "peak_memory_total": peak_memory_total,
+            "total_time": total_time,
+            "memory_time_integral_kvc": memory_time_integral_kvc,
+            "memory_time_integral_total": memory_time_integral_total
+        }
+
+    def extract_numbered_bullets(self, text):
+        pattern = r'\d+\.\s'
+        parts = re.split(pattern, text)
+        bullets = [part.strip() for part in parts if part.strip()]
+        return bullets
 
     def run(self):
         # initialize prompt queues
@@ -125,8 +172,121 @@ class BatchTester:
         with open(self.prompt_file, "r") as f:
             for line in f:
                 json_line = json.loads(line)
-                standard_flow_prompts.append(self.embed_prompts(self.prompt_templates['standard'], [json_line["prompt"]]))
-                key_token_phase_prompts.append(self.embed_prompts(self.prompt_templates['key_token'], [json_line["prompt"]]))
+                dataset = 'jio' #json_line["dataset"]
+                request_number = 3 #json_line["idx"]
+                standard_flow_prompt = self.embed_prompts(self.prompt_templates['standard'], [json_line["prompt"]])
+                key_token_prompt = self.embed_prompts(self.prompt_templates['key_token'], [json_line["prompt"]])
+
+
+                #### SM BASELINE
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # get input and output lengths
+                output = self.generate(self.small_model_path, [standard_flow_prompt])[0]
+                num_input_tokens = len(output.prompt_token_ids)
+                num_output_tokens = len(output.outputs[0].token_ids)
+
+                # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+
+                sm_baseline = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "output": output.outputs[0].text
+                }
+
+
+                #### LM BASELINE
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # get input and output lengths
+                output = self.generate(self.large_model_path, [standard_flow_prompt])[0]
+                num_input_tokens = len(output.prompt_token_ids)
+                num_output_tokens = len(output.outputs[0].token_ids)
+
+                # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 24.284)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+
+                lm_baseline = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "output": output.outputs[0].text
+                }
+
+
+                #### LM-SM Key Token
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # get input and output lengths
+                output = self.generate(self.large_model_path, [key_token_prompt])[0]
+                num_input_tokens = len(output.prompt_token_ids)
+                num_output_tokens = len(output.outputs[0].token_ids)
+
+                # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 24.284)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+                bullets = self.extract_numbered_bullets(output.outputs[0].text)
+
+                lm_sm_key_token = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "output": output.outputs[0].text,
+                    "num_bullets": len(bullets)
+                }
+
+
+                print("sm_baseline", sm_baseline)
+                print("\n")
+                print("lm_baseline", lm_baseline)
+                print("\n")
+                print("lm_sm_key_token", lm_sm_key_token)
+
+
+
+
+                break
+
+
+        request_number += 1
+
 
         # small model
         # outputs = self.generate(self.small_model_path, standard_flow_prompts)
@@ -135,10 +295,10 @@ class BatchTester:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
         # large model
-        outputs = self.generate(self.large_model_path, standard_flow_prompts)
-        with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
-            for output in outputs:
-                jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+        # outputs = self.generate(self.large_model_path, standard_flow_prompts)
+        # with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
+        #     for output in outputs:
+        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
         # lm key tokens
         # outputs = self.generate(self.large_model_path, key_token_phase_prompts)
@@ -152,7 +312,7 @@ class BatchTester:
         #     for output in outputs:
         #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
-        # with open("./router_test/e2e_peformance/Amun_class1_expansion/expansion_prompts.jsonl", "r") as f:
+        # with open("./data/output/single_request/expansion_prompts.jsonl", "r") as f:
         #     for line in f:
         #         json_line = json.loads(line)
         #         expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))

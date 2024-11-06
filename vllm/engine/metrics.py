@@ -20,6 +20,17 @@ if TYPE_CHECKING:
 
 logger = init_logger(__name__)
 
+# redirect metric logs to output file
+import logging
+logger.setLevel(logging.INFO)
+file_handler = logging.FileHandler('../amun/metrics_output.log')
+file_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s', datefmt='%m-%d %H:%M:%S')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+
+
 prometheus_client.disable_created_metrics()
 
 # The begin-* and end* here are used by the documentation generator
