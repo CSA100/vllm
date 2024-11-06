@@ -172,8 +172,8 @@ class BatchTester:
         with open(self.prompt_file, "r") as f:
             for line in f:
                 json_line = json.loads(line)
-                dataset = 'jio' #json_line["dataset"]
-                request_number = 3 #json_line["idx"]
+                dataset = 'combined'
+                request_number = json_line["idx"]
                 standard_flow_prompt = self.embed_prompts(self.prompt_templates['standard'], [json_line["prompt"]])
                 key_token_prompt = self.embed_prompts(self.prompt_templates['key_token'], [json_line["prompt"]])
 
@@ -196,6 +196,7 @@ class BatchTester:
                 sm_baseline = {
                     "dataset": dataset,
                     "request_number": request_number,
+                    "request": json_line["prompt"],
                     "num_input_tokens": num_input_tokens,
                     "num_output_tokens": num_output_tokens,
                     "peak_memory_kvc": metrics["peak_memory_kvc"],
@@ -205,6 +206,7 @@ class BatchTester:
                     "memory_time_integral_total": metrics["memory_time_integral_total"],
                     "throughput_tokens": throughput_tokens,
                     "throughput_req": throughput_req,
+                    "input": standard_flow_prompt,
                     "output": output.outputs[0].text
                 }
 
@@ -227,6 +229,7 @@ class BatchTester:
                 lm_baseline = {
                     "dataset": dataset,
                     "request_number": request_number,
+                    "request": json_line["prompt"],
                     "num_input_tokens": num_input_tokens,
                     "num_output_tokens": num_output_tokens,
                     "peak_memory_kvc": metrics["peak_memory_kvc"],
@@ -236,6 +239,7 @@ class BatchTester:
                     "memory_time_integral_total": metrics["memory_time_integral_total"],
                     "throughput_tokens": throughput_tokens,
                     "throughput_req": throughput_req,
+                    "input": standard_flow_prompt,
                     "output": output.outputs[0].text
                 }
 
@@ -259,6 +263,7 @@ class BatchTester:
                 lm_sm_key_token = {
                     "dataset": dataset,
                     "request_number": request_number,
+                    "request": json_line["prompt"],
                     "num_input_tokens": num_input_tokens,
                     "num_output_tokens": num_output_tokens,
                     "peak_memory_kvc": metrics["peak_memory_kvc"],
@@ -268,16 +273,54 @@ class BatchTester:
                     "memory_time_integral_total": metrics["memory_time_integral_total"],
                     "throughput_tokens": throughput_tokens,
                     "throughput_req": throughput_req,
+                    "input": key_token_prompt,
                     "output": output.outputs[0].text,
                     "num_bullets": len(bullets)
                 }
 
+                #### LM-SM expansion
+                # clear out log file
+                with open('./metrics_output.log', 'w') as file:
+                    pass
+
+                # create expansion prompt
+                expansion_prompt = self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], lm_sm_key_token["output"]])
+
+                # get input and output lengths
+                output = self.generate(self.small_model_path, [expansion_prompt])[0]
+                num_input_tokens = len(output.prompt_token_ids)
+                num_output_tokens = len(output.outputs[0].token_ids)
+
+                # get metrics
+                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                throughput_req = 1.0 / metrics["total_time"]
+
+                lm_sm_expansion = {
+                    "dataset": dataset,
+                    "request_number": request_number,
+                    "request": json_line["prompt"],
+                    "num_input_tokens": num_input_tokens,
+                    "num_output_tokens": num_output_tokens,
+                    "peak_memory_kvc": metrics["peak_memory_kvc"],
+                    "peak_memory_total": metrics["peak_memory_total"],
+                    "total_time": metrics["total_time"],
+                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                    "memory_time_integral_total": metrics["memory_time_integral_total"],
+                    "throughput_tokens": throughput_tokens,
+                    "throughput_req": throughput_req,
+                    "input": expansion_prompt,
+                    "output": output.outputs[0].text,
+                    "num_parallel": 1
+                }
 
                 print("sm_baseline", sm_baseline)
                 print("\n")
                 print("lm_baseline", lm_baseline)
                 print("\n")
                 print("lm_sm_key_token", lm_sm_key_token)
+                print("\n")
+                print("lm_sm_key_token", lm_sm_expansion)
 
 
 
