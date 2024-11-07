@@ -517,44 +517,44 @@ class BatchTester:
                     }
 
                     # Add in accuracy results
-                    lm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], lm_baseline["output"])
-                    lm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], sm_baseline["output"])
-                    sm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], lm_baseline["output"])
-                    sm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], sm_baseline["output"])
-                    lm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], lm_baseline["output"])
-                    lm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], sm_baseline["output"])
-                    sm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], lm_baseline["output"])
-                    sm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], sm_baseline["output"])
-                    lm_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_baseline["output"], sm_baseline["output"])
+                    # lm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], lm_baseline["output"])
+                    # lm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], sm_baseline["output"])
+                    # sm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], lm_baseline["output"])
+                    # sm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], sm_baseline["output"])
+                    # lm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], lm_baseline["output"])
+                    # lm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], sm_baseline["output"])
+                    # sm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], lm_baseline["output"])
+                    # sm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], sm_baseline["output"])
+                    # lm_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_baseline["output"], sm_baseline["output"])
 
                     accuracy_results = {
-                        "lm_sm_single_VS_lm_final_score": lm_sm_single_VS_lm["final_score"],
-                        "lm_sm_single_VS_lm_judgement1": lm_sm_single_VS_lm["judgement1"],
-                        "lm_sm_single_VS_lm_judgement2": lm_sm_single_VS_lm["judgement2"],
-                        "lm_sm_single_VS_sm_final_score": lm_sm_single_VS_sm["final_score"],
-                        "lm_sm_single_VS_sm_judgement1": lm_sm_single_VS_sm["judgement1"],
-                        "lm_sm_single_VS_sm_judgement2": lm_sm_single_VS_sm["judgement2"],
-                        "sm_sm_single_VS_lm_final_score": sm_sm_single_VS_lm["final_score"],
-                        "sm_sm_single_VS_lm_judgement1": sm_sm_single_VS_lm["judgement1"],
-                        "sm_sm_single_VS_lm_judgement2": sm_sm_single_VS_lm["judgement2"],
-                        "sm_sm_single_VS_sm_final_score": sm_sm_single_VS_sm["final_score"],
-                        "sm_sm_single_VS_sm_judgement1": sm_sm_single_VS_sm["judgement1"],
-                        "sm_sm_single_VS_sm_judgement2": sm_sm_single_VS_sm["judgement2"],
-                        "lm_sm_parallel_VS_lm_final_score": lm_sm_parallel_VS_lm["final_score"],
-                        "lm_sm_parallel_VS_lm_judgement1": lm_sm_parallel_VS_lm["judgement1"],
-                        "lm_sm_parallel_VS_lm_judgement2": lm_sm_parallel_VS_lm["judgement2"],
-                        "lm_sm_parallel_VS_sm_final_score": lm_sm_parallel_VS_sm["final_score"],
-                        "lm_sm_parallel_VS_sm_judgement1": lm_sm_parallel_VS_sm["judgement1"],
-                        "lm_sm_parallel_VS_sm_judgement2": lm_sm_parallel_VS_sm["judgement2"],
-                        "sm_sm_parallel_VS_lm_final_score": sm_sm_parallel_VS_lm["final_score"],
-                        "sm_sm_parallel_VS_lm_judgement1": sm_sm_parallel_VS_lm["judgement1"],
-                        "sm_sm_parallel_VS_lm_judgement2": sm_sm_parallel_VS_lm["judgement2"],
-                        "sm_sm_parallel_VS_sm_final_score": sm_sm_parallel_VS_sm["final_score"],
-                        "sm_sm_parallel_VS_sm_judgement1": sm_sm_parallel_VS_sm["judgement1"],
-                        "sm_sm_parallel_VS_sm_judgement2": sm_sm_parallel_VS_sm["judgement2"],
-                        "lm_VS_sm_final_score": lm_VS_sm["final_score"],
-                        "lm_VS_sm_judgement1": lm_VS_sm["judgement1"],
-                        "lm_VS_sm_judgement2": lm_VS_sm["judgement2"]
+                        # "lm_sm_single_VS_lm_final_score": lm_sm_single_VS_lm["final_score"],
+                        # "lm_sm_single_VS_lm_judgement1": lm_sm_single_VS_lm["judgement1"],
+                        # "lm_sm_single_VS_lm_judgement2": lm_sm_single_VS_lm["judgement2"],
+                        # "lm_sm_single_VS_sm_final_score": lm_sm_single_VS_sm["final_score"],
+                        # "lm_sm_single_VS_sm_judgement1": lm_sm_single_VS_sm["judgement1"],
+                        # "lm_sm_single_VS_sm_judgement2": lm_sm_single_VS_sm["judgement2"],
+                        # "sm_sm_single_VS_lm_final_score": sm_sm_single_VS_lm["final_score"],
+                        # "sm_sm_single_VS_lm_judgement1": sm_sm_single_VS_lm["judgement1"],
+                        # "sm_sm_single_VS_lm_judgement2": sm_sm_single_VS_lm["judgement2"],
+                        # "sm_sm_single_VS_sm_final_score": sm_sm_single_VS_sm["final_score"],
+                        # "sm_sm_single_VS_sm_judgement1": sm_sm_single_VS_sm["judgement1"],
+                        # "sm_sm_single_VS_sm_judgement2": sm_sm_single_VS_sm["judgement2"],
+                        # "lm_sm_parallel_VS_lm_final_score": lm_sm_parallel_VS_lm["final_score"],
+                        # "lm_sm_parallel_VS_lm_judgement1": lm_sm_parallel_VS_lm["judgement1"],
+                        # "lm_sm_parallel_VS_lm_judgement2": lm_sm_parallel_VS_lm["judgement2"],
+                        # "lm_sm_parallel_VS_sm_final_score": lm_sm_parallel_VS_sm["final_score"],
+                        # "lm_sm_parallel_VS_sm_judgement1": lm_sm_parallel_VS_sm["judgement1"],
+                        # "lm_sm_parallel_VS_sm_judgement2": lm_sm_parallel_VS_sm["judgement2"],
+                        # "sm_sm_parallel_VS_lm_final_score": sm_sm_parallel_VS_lm["final_score"],
+                        # "sm_sm_parallel_VS_lm_judgement1": sm_sm_parallel_VS_lm["judgement1"],
+                        # "sm_sm_parallel_VS_lm_judgement2": sm_sm_parallel_VS_lm["judgement2"],
+                        # "sm_sm_parallel_VS_sm_final_score": sm_sm_parallel_VS_sm["final_score"],
+                        # "sm_sm_parallel_VS_sm_judgement1": sm_sm_parallel_VS_sm["judgement1"],
+                        # "sm_sm_parallel_VS_sm_judgement2": sm_sm_parallel_VS_sm["judgement2"],
+                        # "lm_VS_sm_final_score": lm_VS_sm["final_score"],
+                        # "lm_VS_sm_judgement1": lm_VS_sm["judgement1"],
+                        # "lm_VS_sm_judgement2": lm_VS_sm["judgement2"]
                     }
 
                     # write to csv
