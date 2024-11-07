@@ -9,7 +9,8 @@ from collections import defaultdict
 import subprocess
 import re
 import gc
-from openai import OpenAI
+from llamaapi import LlamaAPI
+import csv
 
 # from enum import enum
 
@@ -166,31 +167,36 @@ class BatchTester:
         return bullets
 
     def get_accuracy_results(self, question, answer_a, answer_b):
-        client = OpenAI()
+        print('Running LlamaAPI for question:', question)
+        llama = LlamaAPI("LA-95ea0f58aba64c80b0e421e3d5d15e0c7e8fbe3846a4428b92d4f89cc49d43d9")
 
         system_prompt = "Please act as an impartial judge and evaluate the quality of the responses provided by two AI assistants to the user question displayed below. You should choose the assistant that follows the user's instructions and answers the user's question better. Your evaluation should consider factors such as the helpfulness, relevance, accuracy, depth, creativity, and level of detail of their responses. Begin your evaluation by comparing the two responses and provide a short explanation. Avoid any position biases and ensure that the order in which the responses were presented does not influence your decision. Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants. Be as objective as possible. After providing your explanation, output your final verdict by strictly following this format: \"[[A]]\" if assistant A is better, \"[[B]]\" if assistant B is better, and \"[[C]]\" for a tie."
-        
+
         prompt = f"[User Question]\n{question}\n\n[The Start of Assistant A's Answer]\n{answer_a}\n[The End of Assistant A's Answer]\n\n[The Start of Assistant B's Answer]\n{answer_b}\n[The End of Assistant B's Answer]"
-        completion = client.chat.completions.create(
-            model=  "gpt-4o", # "gpt-3.5-turbo-0125", #
-            messages=[
+        api_request_json = {
+            "model": "llama3.1-70b",
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
-            ]
-        )
-        res = completion.choices[0].message.content
-        score_1 = res.split("[[")[1].split("]]")[0]
+            ],
+            "max_tokens": 1200,
+            "stream": False,
+        }
+        judgement1 = llama.run(api_request_json).json()["choices"][0]["message"]["content"]
+        score_1 = judgement1.split("[[")[1].split("]]")[0]
 
         prompt = f"[User Question]\n{question}\n\n[The Start of Assistant A's Answer]\n{answer_b}\n[The End of Assistant A's Answer]\n\n[The Start of Assistant B's Answer]\n{answer_a}\n[The End of Assistant B's Answer]"
-        completion = client.chat.completions.create(
-            model=  "gpt-4o", # "gpt-3.5-turbo-0125", #
-            messages=[
+        api_request_json = {
+            "model": "llama3.1-70b",
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
-            ]
-        )
-        res = completion.choices[0].message.content
-        score_2 = res.split("[[")[1].split("]]")[0]
+            ],
+            "max_tokens": 1200,
+            "stream": False,
+        }
+        judgement2 = llama.run(api_request_json).json()["choices"][0]["message"]["content"]
+        score_2 = judgement2.split("[[")[1].split("]]")[0]
 
         score1 = 0
         if score_1 == "A":
@@ -206,7 +212,13 @@ class BatchTester:
 
         combined_score = score1 + score2
         final_score = 1 if combined_score > 0 else -1 if combined_score < 0 else 0
-        return final_score
+
+        ans =  {
+            "final_score": final_score,
+            "judgement1": judgement1, 
+            "judgement2": judgement2
+        }
+        return ans
 
     def run(self):
         # initialize prompt queues
@@ -215,375 +227,387 @@ class BatchTester:
         expansion_phase_prompts = []
 
         # augment standard flow and key token prompts
-        with open(self.prompt_file, "r") as f:
-            for line in f:
-                json_line = json.loads(line)
-                dataset = 'combined'
-                request_number = json_line["idx"]
-                standard_flow_prompt = self.embed_prompts(self.prompt_templates['standard'], [json_line["prompt"]])
-                key_token_prompt = self.embed_prompts(self.prompt_templates['key_token'], [json_line["prompt"]])
-
-                #### SM BASELINE
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
-
-                # get input and output lengths
-                output = self.generate(self.small_model_path, [standard_flow_prompt])[0]
-                num_input_tokens = len(output.prompt_token_ids)
-                num_output_tokens = len(output.outputs[0].token_ids)
-
-                # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
-
-                sm_baseline = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": standard_flow_prompt,
-                    "output": output.outputs[0].text
-                }
+        with open("result.csv", mode="w", newline="") as csv_file:
+            with open(self.prompt_file, "r") as f:
+                i = 0
+                for line in f:
+                    i += 1
+                    json_line = json.loads(line)
+                    dataset = 'combined'
+                    request_number = json_line["idx"]
+                    standard_flow_prompt = self.embed_prompts(self.prompt_templates['standard'], [json_line["prompt"]])
+                    key_token_prompt = self.embed_prompts(self.prompt_templates['key_token'], [json_line["prompt"]])
 
 
-                #### LM BASELINE
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
+                    ### row detials
+                    row_details = {
+                        "dataset": dataset,
+                        "request_number": request_number,
+                        "request": json_line["prompt"],
+                    }
 
-                # get input and output lengths
-                output = self.generate(self.large_model_path, [standard_flow_prompt])[0]
-                num_input_tokens = len(output.prompt_token_ids)
-                num_output_tokens = len(output.outputs[0].token_ids)
+                    #### SM BASELINE
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
 
-                # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 24.284)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
+                    # get input and output lengths
+                    output = self.generate(self.small_model_path, [standard_flow_prompt])[0]
+                    num_input_tokens = len(output.prompt_token_ids)
+                    num_output_tokens = len(output.outputs[0].token_ids)
 
-                lm_baseline = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": standard_flow_prompt,
-                    "output": output.outputs[0].text
-                }
+                    # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
 
-
-                #### LM-SM Key Token
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
-
-                # get input and output lengths
-                output = self.generate(self.large_model_path, [key_token_prompt])[0]
-                num_input_tokens = len(output.prompt_token_ids)
-                num_output_tokens = len(output.outputs[0].token_ids)
-
-                # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 24.284)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
-                bullets = self.extract_numbered_bullets(output.outputs[0].text)
-
-                lm_sm_key_token = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": key_token_prompt,
-                    "output": output.outputs[0].text,
-                    "num_bullets": len(bullets)
-                }
+                    sm_baseline = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": standard_flow_prompt,
+                        "output": output.outputs[0].text
+                    }
 
 
-                #### LM-SM expansion
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
+                    #### LM BASELINE
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
 
-                # create expansion prompt
-                expansion_prompt = self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], lm_sm_key_token["output"]])
+                    # get input and output lengths
+                    output = self.generate(self.large_model_path, [standard_flow_prompt])[0]
+                    num_input_tokens = len(output.prompt_token_ids)
+                    num_output_tokens = len(output.outputs[0].token_ids)
 
-                # get input and output lengths
-                output = self.generate(self.small_model_path, [expansion_prompt])[0]
-                num_input_tokens = len(output.prompt_token_ids)
-                num_output_tokens = len(output.outputs[0].token_ids)
+                    # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 24.284)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
 
-                # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
-
-                lm_sm_expansion = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": expansion_prompt,
-                    "output": output.outputs[0].text,
-                    "num_parallel": 1
-                }
-
-                #### LM-SM expansion parallel
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
-
-                # create expansion prompt
-                expansion_prompts = []
-                for bullet in bullets:
-                    expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_sm_key_token["output"], bullet]))
-
-                # get input and output lengths
-                outputs = self.generate(self.small_model_path, expansion_prompts)
-                num_input_tokens = 0
-                num_output_tokens = 0
-                response = ""
-                for output in outputs:
-                    num_input_tokens += len(output.prompt_token_ids)
-                    num_output_tokens += len(output.outputs[0].token_ids)
-                    response += output.outputs[0].text + "\n\n"
-
-                # # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
-
-                lm_sm_expansion_parallel = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": '\n\n'.join(expansion_prompts),
-                    "output": response,
-                    "num_parallel": len(expansion_prompts)
-                }
+                    lm_baseline = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": standard_flow_prompt,
+                        "output": output.outputs[0].text
+                    }
 
 
-                #### SM-SM Key Token
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
+                    #### LM-SM Key Token
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
 
-                # get input and output lengths
-                output = self.generate(self.small_model_path, [key_token_prompt])[0]
-                num_input_tokens = len(output.prompt_token_ids)
-                num_output_tokens = len(output.outputs[0].token_ids)
+                    # get input and output lengths
+                    output = self.generate(self.large_model_path, [key_token_prompt])[0]
+                    num_input_tokens = len(output.prompt_token_ids)
+                    num_output_tokens = len(output.outputs[0].token_ids)
 
-                # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
-                bullets = self.extract_numbered_bullets(output.outputs[0].text)
+                    # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 24.284)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
+                    bullets = self.extract_numbered_bullets(output.outputs[0].text)
 
-                sm_sm_key_token = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": key_token_prompt,
-                    "output": output.outputs[0].text,
-                    "num_bullets": len(bullets)
-                }
-
-                #### SM-SM expansion
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
-
-                # create expansion prompt
-                expansion_prompt = self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], lm_sm_key_token["output"]])
-
-                # get input and output lengths
-                output = self.generate(self.small_model_path, [expansion_prompt])[0]
-                num_input_tokens = len(output.prompt_token_ids)
-                num_output_tokens = len(output.outputs[0].token_ids)
-
-                # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
-
-                sm_sm_expansion = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": expansion_prompt,
-                    "output": output.outputs[0].text,
-                    "num_parallel": 1
-                }
-
-                #### SM-SM expansion parallel
-                # clear out log file
-                with open('./metrics_output.log', 'w') as file:
-                    pass
-
-                # create expansion prompt
-                expansion_prompts = []
-                for bullet in bullets:
-                    expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_sm_key_token["output"], bullet]))
-
-                # get input and output lengths
-                outputs = self.generate(self.small_model_path, expansion_prompts)
-                num_input_tokens = 0
-                num_output_tokens = 0
-                response = ""
-                for output in outputs:
-                    num_input_tokens += len(output.prompt_token_ids)
-                    num_output_tokens += len(output.outputs[0].token_ids)
-                    response += output.outputs[0].text + "\n\n"
-
-                # # get metrics
-                metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
-                throughput_tokens = float(num_output_tokens) / metrics["total_time"]
-                throughput_req = 1.0 / metrics["total_time"]
-
-                sm_sm_expansion_parallel = {
-                    "dataset": dataset,
-                    "request_number": request_number,
-                    "request": json_line["prompt"],
-                    "num_input_tokens": num_input_tokens,
-                    "num_output_tokens": num_output_tokens,
-                    "peak_memory_kvc": metrics["peak_memory_kvc"],
-                    "peak_memory_total": metrics["peak_memory_total"],
-                    "total_time": metrics["total_time"],
-                    "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
-                    "memory_time_integral_total": metrics["memory_time_integral_total"],
-                    "throughput_tokens": throughput_tokens,
-                    "throughput_req": throughput_req,
-                    "input": '\n\n'.join(expansion_prompts),
-                    "output": response,
-                    "num_parallel": len(expansion_prompts)
-                }
-
-                
-
-                print("sm_baseline", sm_baseline)
-                print("\n")
-                print("lm_baseline", lm_baseline)
-                print("\n")
-                print("lm_sm_key_token", lm_sm_key_token)
-                print("\n")
-                print("lm_sm_expansion", lm_sm_expansion)
-                print("\n")
-                print("lm_sm_expansion_parallel", lm_sm_expansion_parallel)
-                print("\n")
-                print("sm_sm_key_token", sm_sm_key_token)
-                print("\n")
-                print("sm_sm_expansion", sm_sm_expansion)
-                print("\n")
-                print("sm_sm_expansion_parallel", sm_sm_expansion_parallel)
+                    lm_sm_key_token = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": key_token_prompt,
+                        "output": output.outputs[0].text,
+                        "num_bullets": len(bullets)
+                    }
 
 
-                # Add in accuracy results
-                accuracy_results = {
-                    "lm_sm_VS_lm_single": get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], lm_baseline["output"]),
-                    "lm_sm_VS_sm_single": get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], sm_baseline["output"]),
-                    "sm_sm_VS_lm_single": get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], lm_baseline["output"]),
-                    "sm_sm_VS_sm_single": get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], sm_baseline["output"]),
-                    "lm_sm_VS_lm_parallel": get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], lm_baseline["output"]),
-                    "lm_sm_VS_sm_parallel": get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], sm_baseline["output"]),
-                    "sm_sm_VS_lm_parallel": get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], lm_baseline["output"]),
-                    "sm_sm_VS_sm_parallel": get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], sm_baseline["output"]),
-                    "lm_VS_sm": get_accuracy_results(json_line["prompt"], lm_baseline["output"], sm_baseline["output"])
-                }
+                    #### LM-SM expansion
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
 
-                break
+                    # create expansion prompt
+                    expansion_prompt = self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], lm_sm_key_token["output"]])
+
+                    # get input and output lengths
+                    output = self.generate(self.small_model_path, [expansion_prompt])[0]
+                    num_input_tokens = len(output.prompt_token_ids)
+                    num_output_tokens = len(output.outputs[0].token_ids)
+
+                    # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
+
+                    lm_sm_expansion = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": expansion_prompt,
+                        "output": output.outputs[0].text,
+                        "num_parallel": 1
+                    }
+
+                    #### LM-SM expansion parallel
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
+
+                    # create expansion prompt
+                    expansion_prompts = []
+                    for bullet in bullets:
+                        expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_sm_key_token["output"], bullet]))
+
+                    # get input and output lengths
+                    outputs = self.generate(self.small_model_path, expansion_prompts)
+                    num_input_tokens = 0
+                    num_output_tokens = 0
+                    response = ""
+                    for output in outputs:
+                        num_input_tokens += len(output.prompt_token_ids)
+                        num_output_tokens += len(output.outputs[0].token_ids)
+                        response += output.outputs[0].text + "\n\n"
+
+                    # # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
+
+                    lm_sm_expansion_parallel = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": '\n\n'.join(expansion_prompts),
+                        "output": response,
+                        "num_parallel": len(expansion_prompts)
+                    }
 
 
-        # small model
-        # outputs = self.generate(self.small_model_path, standard_flow_prompts)
-        # with open(f"{self.out_dir}_SM_standard.jsonl", 'w') as jsonl_file:
-        #     for output in outputs:
-        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+                    #### SM-SM Key Token
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
 
-        # large model
-        # outputs = self.generate(self.large_model_path, standard_flow_prompts)
-        # with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
-        #     for output in outputs:
-        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+                    # get input and output lengths
+                    output = self.generate(self.small_model_path, [key_token_prompt])[0]
+                    num_input_tokens = len(output.prompt_token_ids)
+                    num_output_tokens = len(output.outputs[0].token_ids)
 
-        # lm key tokens
-        # outputs = self.generate(self.large_model_path, key_token_phase_prompts)
-        # with open(f"{self.out_dir}_LM_key_token.jsonl", 'w') as jsonl_file:
-        #     for output in outputs:
-        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+                    # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
+                    bullets = self.extract_numbered_bullets(output.outputs[0].text)
 
-        # sm key tokens
-        # outputs = self.generate(self.small_model_path, key_token_phase_prompts)
-        # with open(f"{self.out_dir}_SM_key_token.jsonl", 'w') as jsonl_file:
-        #     for output in outputs:
-        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+                    sm_sm_key_token = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": key_token_prompt,
+                        "output": output.outputs[0].text,
+                        "num_bullets": len(bullets)
+                    }
 
-        # with open("./data/output/single_request/expansion_prompts.jsonl", "r") as f:
-        #     for line in f:
-        #         json_line = json.loads(line)
-        #         expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
-        # outputs = self.generate(self.small_model_path, expansion_phase_prompts)
-        # with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
-        #     for output in outputs:
-        #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+                    #### SM-SM expansion
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
+
+                    # create expansion prompt
+                    expansion_prompt = self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], lm_sm_key_token["output"]])
+
+                    # get input and output lengths
+                    output = self.generate(self.small_model_path, [expansion_prompt])[0]
+                    num_input_tokens = len(output.prompt_token_ids)
+                    num_output_tokens = len(output.outputs[0].token_ids)
+
+                    # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
+
+                    sm_sm_expansion = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": expansion_prompt,
+                        "output": output.outputs[0].text,
+                        "num_parallel": 1
+                    }
+
+                    #### SM-SM expansion parallel
+                    # clear out log file
+                    with open('./metrics_output.log', 'w') as file:
+                        pass
+
+                    # create expansion prompt
+                    expansion_prompts = []
+                    for bullet in bullets:
+                        expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_sm_key_token["output"], bullet]))
+
+                    # get input and output lengths
+                    outputs = self.generate(self.small_model_path, expansion_prompts)
+                    num_input_tokens = 0
+                    num_output_tokens = 0
+                    response = ""
+                    for output in outputs:
+                        num_input_tokens += len(output.prompt_token_ids)
+                        num_output_tokens += len(output.outputs[0].token_ids)
+                        response += output.outputs[0].text + "\n\n"
+
+                    # # get metrics
+                    metrics = self.get_gpu_metrics(80, 0.9, 6.5573)
+                    throughput_tokens = float(num_output_tokens) / metrics["total_time"]
+                    throughput_req = 1.0 / metrics["total_time"]
+
+                    sm_sm_expansion_parallel = {
+                        "num_input_tokens": num_input_tokens,
+                        "num_output_tokens": num_output_tokens,
+                        "peak_memory_kvc": metrics["peak_memory_kvc"],
+                        "peak_memory_total": metrics["peak_memory_total"],
+                        "total_time": metrics["total_time"],
+                        "memory_time_integral_kvc": metrics["memory_time_integral_kvc"],
+                        "memory_time_integral_total": metrics["memory_time_integral_total"],
+                        "throughput_tokens": throughput_tokens,
+                        "throughput_req": throughput_req,
+                        "input": '\n\n'.join(expansion_prompts),
+                        "output": response,
+                        "num_parallel": len(expansion_prompts)
+                    }
+
+                    # Add in accuracy results
+                    lm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], lm_baseline["output"])
+                    lm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], sm_baseline["output"])
+                    sm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], lm_baseline["output"])
+                    sm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], sm_baseline["output"])
+                    lm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], lm_baseline["output"])
+                    lm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], sm_baseline["output"])
+                    sm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], lm_baseline["output"])
+                    sm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], sm_baseline["output"])
+                    lm_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_baseline["output"], sm_baseline["output"])
+
+                    accuracy_results = {
+                        "lm_sm_single_VS_lm_final_score": lm_sm_single_VS_lm["final_score"],
+                        "lm_sm_single_VS_lm_judgement1": lm_sm_single_VS_lm["judgement1"],
+                        "lm_sm_single_VS_lm_judgement2": lm_sm_single_VS_lm["judgement2"],
+                        "lm_sm_single_VS_sm_final_score": lm_sm_single_VS_sm["final_score"],
+                        "lm_sm_single_VS_sm_judgement1": lm_sm_single_VS_sm["judgement1"],
+                        "lm_sm_single_VS_sm_judgement2": lm_sm_single_VS_sm["judgement2"],
+                        "sm_sm_single_VS_lm_final_score": sm_sm_single_VS_lm["final_score"],
+                        "sm_sm_single_VS_lm_judgement1": sm_sm_single_VS_lm["judgement1"],
+                        "sm_sm_single_VS_lm_judgement2": sm_sm_single_VS_lm["judgement2"],
+                        "sm_sm_single_VS_sm_final_score": sm_sm_single_VS_sm["final_score"],
+                        "sm_sm_single_VS_sm_judgement1": sm_sm_single_VS_sm["judgement1"],
+                        "sm_sm_single_VS_sm_judgement2": sm_sm_single_VS_sm["judgement2"],
+                        "lm_sm_parallel_VS_lm_final_score": lm_sm_parallel_VS_lm["final_score"],
+                        "lm_sm_parallel_VS_lm_judgement1": lm_sm_parallel_VS_lm["judgement1"],
+                        "lm_sm_parallel_VS_lm_judgement2": lm_sm_parallel_VS_lm["judgement2"],
+                        "lm_sm_parallel_VS_sm_final_score": lm_sm_parallel_VS_sm["final_score"],
+                        "lm_sm_parallel_VS_sm_judgement1": lm_sm_parallel_VS_sm["judgement1"],
+                        "lm_sm_parallel_VS_sm_judgement2": lm_sm_parallel_VS_sm["judgement2"],
+                        "sm_sm_parallel_VS_lm_final_score": sm_sm_parallel_VS_lm["final_score"],
+                        "sm_sm_parallel_VS_lm_judgement1": sm_sm_parallel_VS_lm["judgement1"],
+                        "sm_sm_parallel_VS_lm_judgement2": sm_sm_parallel_VS_lm["judgement2"],
+                        "sm_sm_parallel_VS_sm_final_score": sm_sm_parallel_VS_sm["final_score"],
+                        "sm_sm_parallel_VS_sm_judgement1": sm_sm_parallel_VS_sm["judgement1"],
+                        "sm_sm_parallel_VS_sm_judgement2": sm_sm_parallel_VS_sm["judgement2"],
+                        "lm_VS_sm_final_score": lm_VS_sm["final_score"],
+                        "lm_VS_sm_judgement1": lm_VS_sm["judgement1"],
+                        "lm_VS_sm_judgement2": lm_VS_sm["judgement2"]
+                    }
+
+                    # write to csv
+                    dicts = [row_details, sm_baseline, lm_baseline, lm_sm_key_token, lm_sm_expansion, lm_sm_expansion_parallel, sm_sm_key_token, sm_sm_expansion, sm_sm_expansion_parallel, accuracy_results]
+                    
+                    final_row = []
+                    headers = []
+                    for d in dicts:
+                        if i == 1:
+                            headers.extend(d.keys())
+                        final_row.extend([str(value).replace("\n", "        ") for value in d.values()])
+                    writer = csv.writer(csv_file, quotechar='"', quoting=csv.QUOTE_ALL)
+                    if i == 1:
+                        writer.writerow(headers)
+                    writer.writerow(final_row)
+
+                    if i == 3:
+                        break
+                    
+
+
+            # small model
+            # outputs = self.generate(self.small_model_path, standard_flow_prompts)
+            # with open(f"{self.out_dir}_SM_standard.jsonl", 'w') as jsonl_file:
+            #     for output in outputs:
+            #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+            # large model
+            # outputs = self.generate(self.large_model_path, standard_flow_prompts)
+            # with open(f"{self.out_dir}_LM_standard.jsonl", 'w') as jsonl_file:
+            #     for output in outputs:
+            #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+            # lm key tokens
+            # outputs = self.generate(self.large_model_path, key_token_phase_prompts)
+            # with open(f"{self.out_dir}_LM_key_token.jsonl", 'w') as jsonl_file:
+            #     for output in outputs:
+            #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+            # sm key tokens
+            # outputs = self.generate(self.small_model_path, key_token_phase_prompts)
+            # with open(f"{self.out_dir}_SM_key_token.jsonl", 'w') as jsonl_file:
+            #     for output in outputs:
+            #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
+
+            # with open("./data/output/single_request/expansion_prompts.jsonl", "r") as f:
+            #     for line in f:
+            #         json_line = json.loads(line)
+            #         expansion_phase_prompts.append(self.embed_prompts(self.prompt_templates['expansion'], [json_line["prompt"], json_line["key_tokens"]]))
+            # outputs = self.generate(self.small_model_path, expansion_phase_prompts)
+            # with open(f"{self.out_dir}_SM_expansion.jsonl", 'w') as jsonl_file:
+            #     for output in outputs:
+            #         jsonl_file.write(json.dumps({"prompt": output.prompt, "response": output.outputs[0].text}) + '\n')
 
 
 
