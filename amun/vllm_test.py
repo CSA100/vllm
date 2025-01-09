@@ -119,7 +119,18 @@ class BatchTester:
         print("<<<<<< Batch Test Configuration <<<<<<\n")
 
     def generate(self, model_path, prompts):
-        sampling_params = SamplingParams(temperature=0.6, top_p=0.9, min_tokens=1, max_tokens=1000) # max_tokens=1000
+        sampling_params = SamplingParams.from_optional(
+            max_tokens=512,
+            stop=[
+                "<|end_of_text|>", 
+                "<|eot_id|>",
+                "</s>",
+                "<|im_end|>",
+                "\nHuman:", 
+                "\nAssistant:",
+                "END"
+            ],
+        ) # max_tokens=1000
         if model_path == self.small_model_path:
             llm = LLM(model=model_path, gpu_memory_utilization=self.gpu_memory_utilization, disable_log_stats=False, enable_prefix_caching=True, kv_cache_dtype="fp8") #  Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token lmsys/vicuna-7b-v1.5
         else:
@@ -585,57 +596,75 @@ class BatchTester:
                         "num_parallel": len(expansion_prompts)
                     }
 
-                    # Add in accuracy results
-                    lm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], lm_baseline["output"])
-                    lm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], sm_baseline["output"])
-                    sm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], lm_baseline["output"])
-                    sm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], sm_baseline["output"])
-                    lm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], lm_baseline["output"])
-                    lm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], sm_baseline["output"])
-                    sm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], lm_baseline["output"])
-                    sm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], sm_baseline["output"])
-                    lm_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_baseline["output"], sm_baseline["output"])
+                    # # Add in accuracy results
+                    # lm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], lm_baseline["output"])
+                    # lm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion["output"], sm_baseline["output"])
+                    # sm_sm_single_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], lm_baseline["output"])
+                    # sm_sm_single_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion["output"], sm_baseline["output"])
+                    # lm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], lm_baseline["output"])
+                    # lm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_expansion_parallel["output"], sm_baseline["output"])
+                    # sm_sm_parallel_VS_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], lm_baseline["output"])
+                    # sm_sm_parallel_VS_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_expansion_parallel["output"], sm_baseline["output"])
+                    # lm_VS_sm = self.get_accuracy_results(json_line["prompt"], lm_baseline["output"], sm_baseline["output"])
 
                     accuracy_results = {
-                        "lm_sm_single_VS_lm_final_score": lm_sm_single_VS_lm["final_score"],
-                        "lm_sm_single_VS_lm_judgement1": lm_sm_single_VS_lm["judgement1"],
-                        "lm_sm_single_VS_lm_judgement2": lm_sm_single_VS_lm["judgement2"],
-                        "lm_sm_single_VS_sm_final_score": lm_sm_single_VS_sm["final_score"],
-                        "lm_sm_single_VS_sm_judgement1": lm_sm_single_VS_sm["judgement1"],
-                        "lm_sm_single_VS_sm_judgement2": lm_sm_single_VS_sm["judgement2"],
-                        "sm_sm_single_VS_lm_final_score": sm_sm_single_VS_lm["final_score"],
-                        "sm_sm_single_VS_lm_judgement1": sm_sm_single_VS_lm["judgement1"],
-                        "sm_sm_single_VS_lm_judgement2": sm_sm_single_VS_lm["judgement2"],
-                        "sm_sm_single_VS_sm_final_score": sm_sm_single_VS_sm["final_score"],
-                        "sm_sm_single_VS_sm_judgement1": sm_sm_single_VS_sm["judgement1"],
-                        "sm_sm_single_VS_sm_judgement2": sm_sm_single_VS_sm["judgement2"],
-                        "lm_sm_parallel_VS_lm_final_score": lm_sm_parallel_VS_lm["final_score"],
-                        "lm_sm_parallel_VS_lm_judgement1": lm_sm_parallel_VS_lm["judgement1"],
-                        "lm_sm_parallel_VS_lm_judgement2": lm_sm_parallel_VS_lm["judgement2"],
-                        "lm_sm_parallel_VS_sm_final_score": lm_sm_parallel_VS_sm["final_score"],
-                        "lm_sm_parallel_VS_sm_judgement1": lm_sm_parallel_VS_sm["judgement1"],
-                        "lm_sm_parallel_VS_sm_judgement2": lm_sm_parallel_VS_sm["judgement2"],
-                        "sm_sm_parallel_VS_lm_final_score": sm_sm_parallel_VS_lm["final_score"],
-                        "sm_sm_parallel_VS_lm_judgement1": sm_sm_parallel_VS_lm["judgement1"],
-                        "sm_sm_parallel_VS_lm_judgement2": sm_sm_parallel_VS_lm["judgement2"],
-                        "sm_sm_parallel_VS_sm_final_score": sm_sm_parallel_VS_sm["final_score"],
-                        "sm_sm_parallel_VS_sm_judgement1": sm_sm_parallel_VS_sm["judgement1"],
-                        "sm_sm_parallel_VS_sm_judgement2": sm_sm_parallel_VS_sm["judgement2"],
-                        "lm_VS_sm_final_score": lm_VS_sm["final_score"],
-                        "lm_VS_sm_judgement1": lm_VS_sm["judgement1"],
-                        "lm_VS_sm_judgement2": lm_VS_sm["judgement2"]
+                        # "lm_sm_single_VS_lm_final_score": lm_sm_single_VS_lm["final_score"],
+                        # "lm_sm_single_VS_lm_judgement1": lm_sm_single_VS_lm["judgement1"],
+                        # "lm_sm_single_VS_lm_judgement2": lm_sm_single_VS_lm["judgement2"],
+                        # "lm_sm_single_VS_sm_final_score": lm_sm_single_VS_sm["final_score"],
+                        # "lm_sm_single_VS_sm_judgement1": lm_sm_single_VS_sm["judgement1"],
+                        # "lm_sm_single_VS_sm_judgement2": lm_sm_single_VS_sm["judgement2"],
+                        # "sm_sm_single_VS_lm_final_score": sm_sm_single_VS_lm["final_score"],
+                        # "sm_sm_single_VS_lm_judgement1": sm_sm_single_VS_lm["judgement1"],
+                        # "sm_sm_single_VS_lm_judgement2": sm_sm_single_VS_lm["judgement2"],
+                        # "sm_sm_single_VS_sm_final_score": sm_sm_single_VS_sm["final_score"],
+                        # "sm_sm_single_VS_sm_judgement1": sm_sm_single_VS_sm["judgement1"],
+                        # "sm_sm_single_VS_sm_judgement2": sm_sm_single_VS_sm["judgement2"],
+                        # "lm_sm_parallel_VS_lm_final_score": lm_sm_parallel_VS_lm["final_score"],
+                        # "lm_sm_parallel_VS_lm_judgement1": lm_sm_parallel_VS_lm["judgement1"],
+                        # "lm_sm_parallel_VS_lm_judgement2": lm_sm_parallel_VS_lm["judgement2"],
+                        # "lm_sm_parallel_VS_sm_final_score": lm_sm_parallel_VS_sm["final_score"],
+                        # "lm_sm_parallel_VS_sm_judgement1": lm_sm_parallel_VS_sm["judgement1"],
+                        # "lm_sm_parallel_VS_sm_judgement2": lm_sm_parallel_VS_sm["judgement2"],
+                        # "sm_sm_parallel_VS_lm_final_score": sm_sm_parallel_VS_lm["final_score"],
+                        # "sm_sm_parallel_VS_lm_judgement1": sm_sm_parallel_VS_lm["judgement1"],
+                        # "sm_sm_parallel_VS_lm_judgement2": sm_sm_parallel_VS_lm["judgement2"],
+                        # "sm_sm_parallel_VS_sm_final_score": sm_sm_parallel_VS_sm["final_score"],
+                        # "sm_sm_parallel_VS_sm_judgement1": sm_sm_parallel_VS_sm["judgement1"],
+                        # "sm_sm_parallel_VS_sm_judgement2": sm_sm_parallel_VS_sm["judgement2"],
+                        # "lm_VS_sm_final_score": lm_VS_sm["final_score"],
+                        # "lm_VS_sm_judgement1": lm_VS_sm["judgement1"],
+                        # "lm_VS_sm_judgement2": lm_VS_sm["judgement2"]
                     }
 
                     # write to csv
                     dicts = [row_details, sm_baseline, lm_baseline, lm_sm_key_token, lm_sm_expansion, lm_sm_expansion_parallel, sm_sm_key_token, sm_sm_expansion, sm_sm_expansion_parallel, accuracy_results]
                     
+                    # Prepare row data with proper escaping and formatting
                     final_row = []
                     headers = []
                     for d in dicts:
                         if i == 1:
                             headers.extend(d.keys())
-                        final_row.extend([str(value) for value in d.values()])
-                    writer = csv.writer(csv_file, quotechar='"', quoting=csv.QUOTE_ALL)
+                        # Format values appropriately for CSV/Excel
+                        for value in d.values():
+                            if isinstance(value, float):
+                                # Format floats to 4 decimal places
+                                formatted_value = f"{value:.4f}"
+                            elif isinstance(value, str):
+                                # Clean up strings - remove newlines and excessive spaces
+                                formatted_value = value.replace('\n', ' ').replace('\r', ' ')
+                                formatted_value = ' '.join(formatted_value.split())
+                            else:
+                                formatted_value = str(value)
+                            final_row.append(formatted_value)
+
+                    # Write to CSV with proper Excel-friendly settings
+                    writer = csv.writer(csv_file, 
+                                      delimiter=',',
+                                      quotechar='"', 
+                                      quoting=csv.QUOTE_MINIMAL,
+                                      lineterminator='\n')
                     if i == 1:
                         writer.writerow(headers)
                     writer.writerow(final_row)
@@ -724,6 +753,9 @@ if __name__ == "__main__":
     Example command
     python3 vllm_test.py --lmp="lmsys/vicuna-13b-v1.5" --smp="lmsys/vicuna-7b-v1.5" --mepp=20 --pf="./data/input/vicuna_g_cf.jsonl" --ptf="./data/prompt_templates.jsonl" --gpu_mem="0.9" --qkv="False" --out_dir="./data/output/"
     python3 vllm_test.py --lmp="/huggingface/models--lmsys--vicuna-13b-v1.5/snapshots/c8327bf999adbd2efe2e75f6509fa01436100dc2" --smp="/huggingface/models--Chaanan--vicuna-7b-v1.5-W8A8-Dynamic-Per-Token/snapshots/d607e7f6393d17f42e546fa2827484d69de6dd29" --mepp=20 --pf="./data/input/wizard.jsonl" --ptf="./data/prompt_templates.jsonl" --gpu_mem="0.9" --qkv="False" --out_dir="./data/output/"
+
+    nohup python3 vllm_test.py --lmp="meta-llama/Llama-3.1-8B" --smp="meta-llama/Llama-3.2-1B-Instruct" --mepp=20 --pf="./data/input/routed/amun/combined.jsonl" --ptf="./data/prompt_templates.js
+onl" --gpu_mem="0.9" --qkv="False" --out_dir="./data/output/" &
 
     /home/chaanan/.cache/huggingface/hub/models--Chaanan--vicuna-7b-v1.5-W8A8-Dynamic-Per-Token/snapshots/d607e7f6393d17f42e546fa2827484d69de6dd29
     Chaanan/vicuna-7b-v1.5-W8A8-Dynamic-Per-Token 
