@@ -31,7 +31,7 @@ class BatchTester:
         self.prompt_template_file = prompt_template_file
         self.out_dir = out_dir
         self.prompt_templates = self.read_prompt_templates(prompt_template_file)
-        self.openai_client = OpenAI()
+        self.openai_client = OpenAI(api_key="")
         
         # Initialize sampling parameters
         self.sampling_params = SamplingParams.from_optional(
@@ -173,9 +173,9 @@ class BatchTester:
                         expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_key_token_output, point, point, bullet]))
 
                     outputs = self.llm_small.chat(expansion_prompts, self.sampling_params)
-                    response = ""
+                    lm_sm_response = ""
                     for bullet, output in zip(lm_bullets, outputs):
-                        response += f"{bullet[0]}. {bullet[1]}\n\n" + output.outputs[0].text + "\n\n"
+                        lm_sm_response += f"{bullet[0]}. {bullet[1]}\n\n" + output.outputs[0].text + "\n\n"
 
                     # parallel expansion sm-sm
                     expansion_prompts = []
@@ -183,28 +183,31 @@ class BatchTester:
                         expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], sm_key_token_output, point, point, bullet]))
 
                     outputs = self.llm_small.chat(expansion_prompts, self.sampling_params)
-                    response = ""
+                    sm_sm_response = ""
                     for bullet, output in zip(sm_bullets, outputs):
-                        response += f"{bullet[0]}. {bullet[1]}\n\n" + output.outputs[0].text + "\n\n"
+                        sm_sm_response += f"{bullet[0]}. {bullet[1]}\n\n" + output.outputs[0].text + "\n\n"
 
-                    # parallel expansion lm-lm
-                    expansion_prompts = []
-                    for point, bullet in lm_bullets:
-                        expansion_prompts.append(self.embed_prompts(self.prompt_templates['expansion_parallel'], [json_line["prompt"], lm_key_token_output, point, point, bullet]))
 
-                    outputs = self.llm_large.chat(expansion_prompts, self.sampling_params)
-                    response = ""
-                    for bullet, output in zip(lm_bullets, outputs):
-                        response += f"{bullet[0]}. {bullet[1]}\n\n" + output.outputs[0].text + "\n\n"
+                    # get accuracy results
+                    lm_sm_vs_sm = self.get_accuracy_results(json_line["prompt"], lm_sm_response, sm_baseline)
+                    lm_sm_vs_lm = self.get_accuracy_results(json_line["prompt"], lm_sm_response, lm_baseline)
+                    sm_sm_vs_sm = self.get_accuracy_results(json_line["prompt"], sm_sm_response, sm_baseline)
+                    sm_sm_vs_lm = self.get_accuracy_results(json_line["prompt"], sm_sm_response, lm_baseline)
+                    lm_vs_sm = self.get_accuracy_results(json_line["prompt"], lm_baseline, sm_baseline)
 
                     # Write results
                     writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
                     if i == 1:
-                        headers = ["dataset", "request_number", "request", 
-                                 "lm_baseline", "sm_baseline",
-                                 "lm_sm", "sm_sm",
-                                 "lm_lm"]
-                                #  "lm_sm_vs_", "lm_key_vs_baseline_score", "sm_key_vs_baseline_score"]
+                        headers = [
+                            "dataset", "request_number", "request", 
+                            "lm_baseline", "sm_baseline",
+                            "lm_sm", "sm_sm",
+                            "lm_sm_vs_sm_final_score", "lm_sm_vs_sm_judgement1", "lm_sm_vs_sm_judgement2",
+                            "lm_sm_vs_lm_final_score", "lm_sm_vs_lm_judgement1", "lm_sm_vs_lm_judgement2",
+                            "sm_sm_vs_sm_final_score", "sm_sm_vs_sm_judgement1", "sm_sm_vs_sm_judgement2",
+                            "sm_sm_vs_lm_final_score", "sm_sm_vs_lm_judgement1", "sm_sm_vs_lm_judgement2",
+                            "lm_vs_sm_final_score", "lm_vs_sm_judgement1", "lm_vs_sm_judgement2"
+                        ]
                         writer.writerow(headers)
 
                     writer.writerow([
@@ -213,17 +216,17 @@ class BatchTester:
                         json_line["prompt"],
                         lm_baseline,
                         sm_baseline,
-                        lm_sm,
-                        sm_sm,
-                        lm_lm,
-                        # accuracy_results["lm_vs_sm"]["final_score"],
-                        # accuracy_results["lm_key_vs_baseline"]["final_score"],
-                        # accuracy_results["sm_key_vs_baseline"]["final_score"]
+                        lm_sm_response,
+                        sm_sm_response,
+                        lm_sm_vs_sm["final_score"], lm_sm_vs_sm["judgement1"], lm_sm_vs_sm["judgement2"],
+                        lm_sm_vs_lm["final_score"], lm_sm_vs_lm["judgement1"], lm_sm_vs_lm["judgement2"],
+                        sm_sm_vs_sm["final_score"], sm_sm_vs_sm["judgement1"], sm_sm_vs_sm["judgement2"],
+                        sm_sm_vs_lm["final_score"], sm_sm_vs_lm["judgement1"], sm_sm_vs_lm["judgement2"],
+                        lm_vs_sm["final_score"], lm_vs_sm["judgement1"], lm_vs_sm["judgement2"]
                     ])
 
                     print(f'\n\nDONE: {i}\n\n')
-                    if i == 3:
-                        break
+                    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run batch testing with persistent LLM instances")
